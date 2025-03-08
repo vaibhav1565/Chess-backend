@@ -1,0 +1,9 @@
+1) Random play
+2) Play with user
+    - Challenge a user
+    - That user accepts challenge
+    - Match begins
+
+    or
+    Challenge link-
+    anyone

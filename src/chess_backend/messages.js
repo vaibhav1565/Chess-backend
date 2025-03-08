@@ -1,3 +1,4 @@
+export const INIT_GAME = "init_game";
 export const MOVE = "move";
 export const ASSIGN_COLOR = "assign_color";
 export const DISCONNECT = "disconnect";
@@ -8,5 +9,7 @@ export const GAME_END_MESSAGES = {
     FIFTY_MOVES: "fifty_moves",
     INSUFFICIENT_MATERIAL: "insufficient_material",
     STALEMATE: "stalemate",
-    THREEFOLD_REPETITION: "threefold_repetition"
+    THREEFOLD_REPETITION: "threefold_repetition",
+    RESIGN: "resign",
+    TIMEOUT: "timeout"
 }

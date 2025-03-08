@@ -1,5 +1,5 @@
 import Game from "./Game.js";
-import { DISCONNECT, MOVE, RESIGN } from "./messages.js";
+import { DISCONNECT } from "./messages.js";
 
 class GameManager {
     constructor() {
@@ -55,17 +55,7 @@ class GameManager {
                 const message = JSON.parse(data.toString());
                 const game = this.findGameByPlayer(ws);
                 if (game) {
-                    if (message.type === MOVE && message.payload) {
-                        game.makeMove(ws, message);
-                    }
-                    else if (message.type === RESIGN) {
-                        const other = game.getOtherPlayer(ws);
-                        if (other && other.readyState === other.OPEN) {
-                            other.send(JSON.stringify({ type: RESIGN }));
-                            other.close();
-                        }
-                        ws.close();
-                    }
+                    game.makeMove(ws, message);
                 }
             }
             catch {}
