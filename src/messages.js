@@ -1,9 +1,8 @@
+const INIT_GAME = "init_game";
 const MOVE = "move";
 const ASSIGN_COLOR = "assign_color";
 const DISCONNECT = "disconnect";
 const RESIGN = "resign";
-
-const PLAY_WITH_FRIEND = "playWithFriend";
 
 const GAME_END_MESSAGES = {
     CHECKMATE: "checkmate",
@@ -15,4 +14,4 @@ const GAME_END_MESSAGES = {
     TIMEOUT: "timeout"
 }
 
-module.exports = {MOVE, ASSIGN_COLOR, DISCONNECT, RESIGN, PLAY_WITH_FRIEND, GAME_END_MESSAGES};
+module.exports = {INIT_GAME, MOVE, ASSIGN_COLOR, DISCONNECT, RESIGN, GAME_END_MESSAGES};

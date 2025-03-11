@@ -8,40 +8,30 @@ const userSchema = new mongoose.Schema(
     username: {
       type: String,
       required: true,
-      // validate(value) {
-      //   const regex = /^[a-zA-Z_]{4,25}$/;
-      //   if (!regex.test(value)) {
-      //     throw new Error("Username must be of 4-25 characters, consisting of alphabets or underscore");
-      //   }
-      // }
+      trim: true,
+      minLength: 2,
+      maxLength: 25,
+      validate: {
+        validator: (value) => /^[a-zA-Z]+$/.test(value),
+        message: "Username must contain only letters.",
+      },
     },
     email: {
       type: String,
       required: true,
       unique: true,
+      index: true,
+      trim: true,
       lowercase: true,
-      validate(value) {
-        if (value.length > 300) {
-          throw new Error("Email cannot be of more than 300 characters!")
-        }
-        if (!validator.isEmail(value)) {
-          throw new Error("Invalid email address: " + value);
-        }
+      maxLength: 250,
+      validate: {
+        validator: validator.isEmail,
+        message: (props) => `${props.value} is not a valid email address.`,
       },
     },
     password: {
       type: String,
       required: true,
-    },
-    photoUrl: {
-      type: String,
-      default: "https://geographyandyou.com/images/user-profile.png",
-      maxLength: 2000,
-      validate(value) {
-        if (!validator.isURL(value)) {
-          throw new Error("Invalid Photo URL: " + value);
-        }
-      },
     },
   },
   {
@@ -52,9 +42,11 @@ const userSchema = new mongoose.Schema(
 userSchema.methods.getJWT = async function () {
   const user = this;
 
-  const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY, {
-    expiresIn: "30d",
-  });
+  const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
+    {
+      expiresIn: "7d",
+    }
+  );
 
   return token;
 };
