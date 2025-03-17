@@ -11,7 +11,9 @@ const GAME_END_MESSAGES = {
     STALEMATE: "stalemate",
     THREEFOLD_REPETITION: "threefold_repetition",
     RESIGN: "resign",
-    TIMEOUT: "timeout"
+    TIMEOUT: "timeout",
+    OPPONENT_DISCONNECT: "opponent_disconnect",
+    ABORT: "abort"
 }
 
 module.exports = {INIT_GAME, MOVE, ASSIGN_COLOR, DISCONNECT, RESIGN, GAME_END_MESSAGES};

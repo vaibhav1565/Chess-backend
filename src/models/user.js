@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
@@ -7,27 +6,23 @@ const userSchema = new mongoose.Schema(
   {
     username: {
       type: String,
-      required: true,
+      required: [true, "Username is required"],
       trim: true,
-      minLength: 2,
-      maxLength: 25,
+      unique: [true, "This username has already been taken"],
+      minLength: [5, "Username must be of atleast 5 characters"],
+      // maxLength: 15,
       validate: {
-        validator: (value) => /^[a-zA-Z]+$/.test(value),
-        message: "Username must contain only letters.",
+        validator: (value) => /^[a-zA-Z0-9]+$/.test(value),
+        message: "Username must consist of alphabets or digits only",
       },
     },
     email: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
+      unique: [true, "This email address has already been used"],
       trim: true,
       lowercase: true,
-      maxLength: 250,
-      validate: {
-        validator: validator.isEmail,
-        message: (props) => `${props.value} is not a valid email address.`,
-      },
+      maxLength: [350, "Email address cannot be more than 350 characters long"],
     },
     password: {
       type: String,
@@ -39,12 +34,12 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-userSchema.methods.getJWT = async function () {
+userSchema.methods.getJWT = function () {
   const user = this;
 
   const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
     {
-      expiresIn: "7d",
+      expiresIn: "30d",
     }
   );
 

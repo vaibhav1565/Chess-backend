@@ -9,8 +9,9 @@ const User = require("./models/user");
 const authRouter = require("./routes/auth.js");
 const profileRouter = require("./routes/profile.js");
 
+const guestAuthRouter = require('./routes/guest');
+
 const GameManager = require("./GameManager.js");
-const { INIT_GAME } = require("./messages.js");
 
 const app = express();
 const server = http.createServer(app); // Create an HTTP server
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use("/", authRouter);
+app.use('/', guestAuthRouter);
 app.use("/", profileRouter);
 
 // WebSocket server attached to the same HTTP server
@@ -27,7 +29,9 @@ const gameManager = new GameManager();
 let numberOfConnections = 0;
 
 wss.on('connection', async (ws, req) => {
-  const token = req.url.split("token=")[1]; // Extract token from URL
+  // const token = req.url.split("token=")[1]; // Extract token from URL
+  const params = new URLSearchParams(req.url.split('?')[1]);
+  const token = params.get('token');
   console.log(token);
   if (!token) {
     throw new Error("Token is not valid");
@@ -38,7 +42,7 @@ wss.on('connection', async (ws, req) => {
 
     const { _id } = decodedObj;
     const user = await User.findById(_id);
-    console.log(user);
+    // console.log(user);
     if (!user) {
       throw new Error("User not found");
     }
@@ -49,21 +53,26 @@ wss.on('connection', async (ws, req) => {
     console.log(numberOfConnections);
 
     ws.on('message', (message) => {
-      message = JSON.parse(message.toString());
-      
-      if (message.type === INIT_GAME) {
-        gameManager.addPlayer(ws);
+      try {
+        message = JSON.parse(message.toString());
+
+        if (message.type === "init_game" && message.payload?.minutes) {
+          gameManager.addPlayer(ws, null, message.payload.minutes);
+        }
+        else if (message.type === "create_invite_code" && message.payload?.minutes) {
+          gameManager.createInvite(ws, message.payload.minutes);
+        }
+        else if (message.type === "delete_invite_code") {
+          gameManager.deleteInvite(ws);
+        }
+        else if (message.type === "join_with_invite_code" && message.inviteCode) {
+          gameManager.addPlayer(ws, message.inviteCode);
+        }
+        else if (message.type === "reconnect") {
+          gameManager.reconnectPlayer(ws);
+        }
       }
-      else if (message.type === "create_invite_code") {
-        const inviteCode = gameManager.createInvite(ws);
-        inviteCode && ws.send(JSON.stringify({ type: "invite_code", code: inviteCode }));
-      }
-      else if (message.type === "delete_invite_code") {
-        gameManager.deleteInvite(ws);
-      }
-      else if (message.type === "join_with_invite_code" && message.inviteCode) {
-        gameManager.addPlayer(ws, message.inviteCode);
-      }
+      catch { }
     });
 
     ws.on('close', () => {
@@ -72,7 +81,7 @@ wss.on('connection', async (ws, req) => {
       console.log("Disconnected");
       console.log(numberOfConnections);
     });
-  } 
+  }
   catch (e) {
     console.log(e);
     ws.close();

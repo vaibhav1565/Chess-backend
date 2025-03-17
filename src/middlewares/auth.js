@@ -4,7 +4,6 @@ const User = require("../models/user");
 const userAuth = async (req, res, next) => {
   try {
     const { token } = req.cookies;
-    console.log(token);
     if (!token) {
       throw new Error("Token is not valid");
     }
@@ -21,7 +20,7 @@ const userAuth = async (req, res, next) => {
     req.user = user;
     next();
   } catch (e) {
-    res.status(401).send("ERROR: " + e.message);
+    res.status(401).json({error: e.message});
   }
 };
 
