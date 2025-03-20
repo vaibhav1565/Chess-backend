@@ -73,6 +73,7 @@ router.post('/guest/signup', async (req, res) => {
                 username: user.username,
                 // password: credentials.password, // Only sending because it's a guest account
                 // email: user.email
+                token
             }
         });
 

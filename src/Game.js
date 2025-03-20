@@ -17,8 +17,8 @@ class Game {
         this.timeLeft = { w: minutes * 60 * 1000, b: minutes * 60 * 1000 }; // 'minutes' minute each
         this.timer;
 
-        (this.player1.readyState === this.player1.OPEN) && this.player1.send(JSON.stringify(
-            {
+        (this.player1.readyState === this.player1.OPEN) &&
+            this.player1.send(JSON.stringify({
                 type: GAME_BEGIN,
                 payload: {
                     color: "w",
@@ -26,8 +26,8 @@ class Game {
                     opponent: { username: player2.user.username, _id: player2.user._id }
                 }
             }));
-        (this.player2.readyState === this.player2.OPEN) && this.player2.send(JSON.stringify(
-            {
+        (this.player2.readyState === this.player2.OPEN) &&
+            this.player2.send(JSON.stringify({
                 type: GAME_BEGIN,
                 payload: {
                     color: "b",
@@ -59,7 +59,7 @@ class Game {
                     this.endGame(GAME_OVER_MESSAGES.TIMEOUT, this.chess.turn());
                 }
             }
-        }, 200);
+        }, 100);
     }
 
     abortGame() {

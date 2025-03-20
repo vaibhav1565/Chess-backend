@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
       unique: [true, "This username has already been taken"],
       minLength: [5, "Username must be of atleast 5 characters"],
-      // maxLength: 10, // This is so that guest account of 15 characters can be created
       validate: {
         validator: (value) => /^[a-zA-Z0-9]*$/.test(value),
         message: "Username must consist of alphabets or digits only",

@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const http = require("node:http");
 const { WebSocketServer } = require("ws");
 const cookieParser = require("cookie-parser");
+const cors = require("cors")
 
 const connectDB = require("./config/database.js");
 
@@ -17,6 +18,12 @@ const { INIT_GAME, CREATE_INVITE_CODE } = require("./messages.js");
 
 require("dotenv").config()
 const app = express();
+app.use(cors(
+  {
+    origin: 'http://localhost:5173',
+    credentials: true
+  }
+))
 const server = http.createServer(app); // Create an HTTP server
 
 app.use(express.json());

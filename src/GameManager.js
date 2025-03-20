@@ -12,7 +12,7 @@ class GameManager {
         };
         this.games = [];
         this.invites = {}; 
-        
+
         /* Store invite codes: 
             { code: 
                 {ws: player, minutes} }
@@ -71,7 +71,8 @@ class GameManager {
             if (!this.waitingUser[minutes]) {
                 this.waitingUser[minutes] = ws;
                 ws.send(JSON.stringify({ type: "message", message: "Waiting for another player to join" }))
-            } else {
+            } 
+            else {
                 if (this.waitingUser[minutes].user._id.equals(ws.user._id)) {
                     console.log(this.waitingUser[minutes].user._id);
                     console.log(ws.user._id);
@@ -122,19 +123,19 @@ class GameManager {
         const gameIndex = this.findGameByPlayer(ws);
         if (gameIndex > -1) {
             const game = this.games[gameIndex];
-            const otherPlayer = game.player1 === ws ? 'b' : 'w';
-            if (game.connectionStatus[otherPlayer] === 'disconnected') {
-                game.abortGame();
-                return;
-            }
+            // const otherPlayer = game.player1 === ws ? 'b' : 'w';
+            // if (game.connectionStatus[otherPlayer] === 'disconnected') {
+            //     game.abortGame();
+            //     return;
+            // }
             
             const { _id } = ws.user;
             if (_id.equals(game.player1.user._id)) {
                 game["connectionStatus"]['w'] = 'disconnected';
-                game.player2.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
+                (game.player2.readyState === game.player2.OPEN) && game.player2.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
             } else {
                 game["connectionStatus"]['b'] = 'disconnected';
-                game.player1.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
+                (game.player1.readyState === game.player1.OPEN) && game.player1.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
             }
         }
 

@@ -1,10 +1,11 @@
 const express = require("express");
-const authRouter = express.Router();
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const { validateData, fieldFilter } = require("../utils/validation");
 const User = require("../models/user");
-const bcrypt = require("bcrypt");
 
+const authRouter = express.Router();
 authRouter.post("/register", async (req, res) => {
   try {
     //Validate the data
