@@ -10,16 +10,16 @@ const userSchema = new mongoose.Schema(
       trim: true,
       unique: [true, "This username has already been taken"],
       minLength: [5, "Username must be of atleast 5 characters"],
-      // maxLength: 15,
+      // maxLength: 10, // This is so that guest account of 15 characters can be created
       validate: {
-        validator: (value) => /^[a-zA-Z0-9]+$/.test(value),
+        validator: (value) => /^[a-zA-Z0-9]*$/.test(value),
         message: "Username must consist of alphabets or digits only",
       },
     },
     email: {
       type: String,
       required: true,
-      unique: [true, "This email address has already been used"],
+      unique: [true, "This email address is already registered"],
       trim: true,
       lowercase: true,
       maxLength: [350, "Email address cannot be more than 350 characters long"],
@@ -34,12 +34,12 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-userSchema.methods.getJWT = function () {
+userSchema.methods.getJWT = function (guest = false) {
   const user = this;
 
   const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
     {
-      expiresIn: "30d",
+      expiresIn: guest ?  10 * 60 : "30d"
     }
   );
 

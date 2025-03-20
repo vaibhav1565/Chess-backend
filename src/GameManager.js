@@ -1,6 +1,6 @@
 const Game = require("./Game.js");
 const { v4: uuidv4 } = require('uuid');
-const { DISCONNECT } = require("./messages.js");
+const { OPPONENT_DISCONNECT } = require("./messages.js");
 
 class GameManager {
     constructor() {
@@ -11,7 +11,13 @@ class GameManager {
             30: null
         };
         this.games = [];
-        this.invites = {}; // Store invite codes: { code: {ws: player, timeControl: minutes} }
+        this.invites = {}; 
+        
+        /* Store invite codes: 
+            { code: 
+                {ws: player, minutes} }
+        */
+
     }
 
     removeGame(gameIndex) {
@@ -24,8 +30,11 @@ class GameManager {
     }
 
     addPlayer(ws, inviteCode, minutes) {
-        if (!(minutes === 1 || minutes === 3 || minutes === 10 || minutes === 30)) return;
-
+        if (minutes) {
+            if (! (minutes === 1 || minutes === 3 || minutes === 10 || minutes === 30)) return;
+        }
+        // console.log('addPlayer function 1')
+        
         const gameIndex = this.findGameByPlayer(ws);
         if (gameIndex > -1) {
             const game = this.games[gameIndex];
@@ -39,35 +48,42 @@ class GameManager {
 
         if (inviteCode) {
             if (this.invites[inviteCode]) {
-                if (minutes !== this.invites[inviteCode]['timeControl']) return;
                 const otherPlayer = this.invites[inviteCode]['ws'];
                 if (otherPlayer.user._id.equals(ws.user._id)) return;
-                delete this.invites[inviteCode];
 
+                const minutes = this.invites[inviteCode]['minutes'];
                 const newGame = new Game(otherPlayer, ws, this, minutes);
                 this.games.push(newGame);
                 this.attachMessageHandler(otherPlayer);
                 this.attachMessageHandler(ws);
+
+                delete this.invites[inviteCode];
             }
             else {
                 ws.send(JSON.stringify({ type: "error", message: "Invalid invite code" }));
             }
         }
         else {
+            // console.log('addPlayer function 2')
             if (!this.waitingUser[minutes] || this.waitingUser[minutes].readyState !== this.waitingUser[minutes].OPEN) {
                 this.waitingUser[minutes] = null;
             }
             if (!this.waitingUser[minutes]) {
                 this.waitingUser[minutes] = ws;
-                ws.send(JSON.stringify({ type: "message", message: "Waiting for another player to join..." }))
+                ws.send(JSON.stringify({ type: "message", message: "Waiting for another player to join" }))
             } else {
-                if (this.waitingUser[minutes].user._id.equals(ws.user._id)) return;
+                if (this.waitingUser[minutes].user._id.equals(ws.user._id)) {
+                    console.log(this.waitingUser[minutes].user._id);
+                    console.log(ws.user._id);
+                    return;
+                }
                 const newGame = new Game(this.waitingUser[minutes], ws, this, minutes);
                 this.games.push(newGame);
                 this.attachMessageHandler(this.waitingUser[minutes]);
                 this.attachMessageHandler(ws);
 
                 this.waitingUser[minutes] = null;
+                // console.log('addPlayer function 3')
             }
         }
     }
@@ -86,32 +102,19 @@ class GameManager {
             return;
         }
 
-        const { _id } = ws.user;
-        const inviteAlreadyExists = Object.keys(this.invites).some(code => this.invites[code]['ws'].user._id.equals(_id));
-        if (inviteAlreadyExists) return;
+        // todo: make a function for reusability
 
         const inviteCode = uuidv4().slice(0, 6);
-        this.invites[inviteCode] = { ws, timeControl: minutes };
-        setTimeout(() => { delete this.invites[inviteCode]; }, 5 * 60 * 1000); // Expires after 5 minutes
+        this.invites[inviteCode] = { ws, minutes };
+        setTimeout(() => { delete this.invites[inviteCode]; }, 15 * 60 * 1000); // Expires after 15 minutes
 
-        ws.send(JSON.stringify({ type: "invite_code", code: inviteCode }));
-    }
-
-    deleteInvite(ws) {
-        const { _id } = ws.user;
-        for (let invite in this.invites) {
-            if (this.invites[invite]['ws'].user._id.equals(_id)) {
-                delete this.invites[invite];
-                if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "message", message: "Invite deleted" }));
-                break;
-            }
-        }
+        ws.send(JSON.stringify({ code: inviteCode }));
     }
 
     removePlayer(ws) {
-        for (let user in this.waitingUser) {
-            if (this.waitingUser[user] === ws) {
-                this.waitingUser[user] = null;
+        for (let timeControl in this.waitingUser) {
+            if (this.waitingUser[timeControl] === ws) {
+                this.waitingUser[timeControl] = null;
                 return;
             }
         }
@@ -124,13 +127,14 @@ class GameManager {
                 game.abortGame();
                 return;
             }
+            
             const { _id } = ws.user;
             if (_id.equals(game.player1.user._id)) {
-                game.changeConnectionStatus('w', 'disconnected');
-                game.player2.send(JSON.stringify({ type: DISCONNECT }));
+                game["connectionStatus"]['w'] = 'disconnected';
+                game.player2.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
             } else {
-                game.changeConnectionStatus('b', 'disconnected');
-                game.player1.send(JSON.stringify({ type: DISCONNECT }));
+                game["connectionStatus"]['b'] = 'disconnected';
+                game.player1.send(JSON.stringify({ type: OPPONENT_DISCONNECT }));
             }
         }
 
@@ -162,12 +166,14 @@ class GameManager {
         const playerId = ws.user._id;
         const color = existingGame.player1.user._id.equals(playerId) ? "w" : "b";
         const existingPlayer = existingGame[color === "w" ? "player1" : "player2"];
-        if (existingPlayer && existingPlayer.readyState === existingPlayer.OPEN) {
+        if (existingPlayer.readyState === existingPlayer.OPEN) {
             existingPlayer.close();
         }
 
         existingGame[color === "w" ? "player1" : "player2"] = ws;
         existingGame.connectionStatus[color] = "connected";
+
+        const otherPlayer = existingGame.getOtherPlayer(ws);
 
         const gameState = {
             type: "game_reconnect",
@@ -175,12 +181,15 @@ class GameManager {
                 color,
                 pgn: existingGame.chess.pgn(),
                 timeLeft: existingGame.timeLeft,
+                opponent: {
+                    _id: otherPlayer.user._id,
+                    username: otherPlayer.user.username
+                }
             }
         };
-        ws.send(JSON.stringify(gameState));
+        ws.readyState === ws.OPEN && ws.send(JSON.stringify(gameState));
 
-        const otherPlayer = existingGame.getOtherPlayer(ws);
-        if (otherPlayer && otherPlayer.readyState === otherPlayer.OPEN) {
+        if (otherPlayer.readyState === otherPlayer.OPEN) {
             otherPlayer.send(JSON.stringify({
                 type: "opponent_reconnected",
                 payload: { connectionStatus: existingGame.connectionStatus }

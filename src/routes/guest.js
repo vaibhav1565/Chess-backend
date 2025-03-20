@@ -1,15 +1,39 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const express = require('express');
-const User = require('../models/user');
 const bcrypt = require('bcrypt');
 
-const generateGuestCredentials = async () => {
-    // Generate a 12 digit random number
-    const randomNum = Math.floor(Math.random() * 1000000000000).toString().padStart(11, '0');
-    const username = `Guest${randomNum}`;
+const User = require('../models/user');
+const GuestCounter = require('../models/guestCounter');
 
-    // Generate a random password (32 characters)
-    const password = crypto.randomBytes(16).toString('hex');
+const generateGuestCredentials = async () => {
+    // Get and increment the counter in one atomic operation
+    const counter = await GuestCounter.findOneAndUpdate(
+        {},
+        { $inc: { lastGuestNumber: 1 } },
+        { upsert: true, new: true }
+        // { upsert: true } - create document if none exists
+        // { new: true } - return updated document instead of original
+    );
+
+    /*
+    Model.findOneAndUpdate()
+    Parameters:
+
+    [conditions] «Object»
+    [update] «Object»
+    [options] «Object» optional see Query.prototype.setOptions()
+    */
+
+    // Format the number with leading zeros (10 digits)
+    const guestNumber = counter.lastGuestNumber.toString().padStart(10, '0');
+    const username = `Guest${guestNumber}`;
+
+    // Generate a random password (16 characters)
+
+    // Generate a cryptographically secure random password
+    // randomBytes(8) generates 16 random bytes
+    // toString('hex') converts bytes to 16 character hex string
+    const password = crypto.randomBytes(8).toString('hex');
 
     return {
         username,
@@ -21,58 +45,39 @@ const router = express.Router();
 
 router.post('/guest/signup', async (req, res) => {
     try {
-        let credentials;
-        let user;
-        let attempts = 0;
-        const maxAttempts = 5;
+        const credentials = await generateGuestCredentials();
 
-        // Try to create a unique guest account
-        while (attempts < maxAttempts) {
-            credentials = await generateGuestCredentials();
-            console.log(credentials);
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(credentials.password, 10);
 
-            // Check if username already exists
-            const existingUser = await User.findOne({ username: credentials.username });
-            if (!existingUser) {
-                // Hash the password
-                const hashedPassword = await bcrypt.hash(credentials.password, 10);
-                const email = `${
-                    credentials.username
-                }@example.com`;
+        const email = `${credentials.username}@guest.com`;
 
-                // Create new user
-                user = new User({
-                    username: credentials.username,
-                    password: hashedPassword,
-                    email
-                });
+        // Create new user
+        const user = new User({
+            username: credentials.username,
+            password: hashedPassword,
+            email
+        });
 
-                await user.save();
-                break;
-            }
-            attempts++;
-        }
-
-        if (!user) {
-            throw new Error('Failed to create unique guest account');
-        }
+        await user.save();
 
         // Generate JWT token
-        const token = user.getJWT();
-        res.cookie("token", token, {
-            expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        });
+        const token = user.getJWT(true);
+
+        res.cookie('token', token, { expires: new Date(Date.now() + 10 * 60 * 1000) }); //10 minutes
 
         // Send response with safe data
         res.status(201).json({
-            message: "success",
             data: {
-                username: credentials.username,
-                password: credentials.password, // Only sending because it's a guest account
+                _id: user._id,
+                username: user.username,
+                // password: credentials.password, // Only sending because it's a guest account
+                // email: user.email
             }
         });
 
-    } catch (error) {
+    }
+    catch (error) {
         res.status(400).json({
             error: error.message
         });
