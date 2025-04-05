@@ -9,11 +9,11 @@ const userSchema = new mongoose.Schema(
       required: [true, "Username is required"],
       trim: true,
       unique: [true, "This username has already been taken"],
-      minLength: [5, "Username must be of atleast 5 characters"],
-      validate: {
-        validator: (value) => /^[a-zA-Z0-9]*$/.test(value),
-        message: "Username must consist of alphabets or digits only",
-      },
+      // minLength: [5, "Username must be of atleast 5 characters"],
+      // validate: {
+      //   validator: (value) => /^[a-zA-Z0-9]*$/.test(value),
+      //   message: "Username must consist of alphabets or digits only",
+      // },
     },
     email: {
       type: String,
@@ -23,9 +23,9 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       maxLength: [350, "Email address cannot be more than 350 characters long"],
     },
-    password: {
+    password: { 
       type: String,
-      required: true,
+      required: true
     },
   },
   {
@@ -38,7 +38,7 @@ userSchema.methods.getJWT = function (guest = false) {
 
   const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
     {
-      expiresIn: guest ?  10 * 60 : "30d"
+      expiresIn: guest ? 10 * 60 : "30d"
     }
   );
 

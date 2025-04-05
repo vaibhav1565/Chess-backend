@@ -30,21 +30,20 @@ class GameManager {
     }
 
     addPlayer(ws, inviteCode, minutes) {
-        if (minutes) {
-            if (! (minutes === 1 || minutes === 3 || minutes === 10 || minutes === 30)) return;
-        }
+        const validMinutes = [1, 3, 10, 30];
+        if (minutes && !validMinutes.includes(minutes)) return;
         // console.log('addPlayer function 1')
         
-        const gameIndex = this.findGameByPlayer(ws);
-        if (gameIndex > -1) {
-            const game = this.games[gameIndex];
-            const { _id } = ws.user;
-            const playerColor = game.player1.user._id.equals(_id) ? 'w' : 'b';
-            if (game.connectionStatus[playerColor] === 'disconnected') {
-                this.reconnectPlayer(ws, game);
-            }
-            return;
-        }
+        // const gameIndex = this.findGameByPlayer(ws);
+        // if (gameIndex > -1) {
+        //     const game = this.games[gameIndex];
+        //     const { _id } = ws.user;
+        //     const playerColor = game.player1.user._id.equals(_id) ? 'w' : 'b';
+        //     if (game.connectionStatus[playerColor] === 'disconnected') {
+        //         this.reconnectPlayer(ws, game);
+        //     }
+        //     return;
+        // }
 
         if (inviteCode) {
             if (this.invites[inviteCode]) {
@@ -70,7 +69,7 @@ class GameManager {
             }
             if (!this.waitingUser[minutes]) {
                 this.waitingUser[minutes] = ws;
-                ws.send(JSON.stringify({ type: "message", message: "Waiting for another player to join" }))
+                ws.send(JSON.stringify({ type: "message", message: "wait" }))
             } 
             else {
                 if (this.waitingUser[minutes].user._id.equals(ws.user._id)) {
@@ -78,7 +77,7 @@ class GameManager {
                     console.log(ws.user._id);
                     return;
                 }
-                const newGame = new Game(this.waitingUser[minutes], ws, this, minutes);
+                const newGame = new Game(this.waitingUser[minutes], ws, this, 1);
                 this.games.push(newGame);
                 this.attachMessageHandler(this.waitingUser[minutes]);
                 this.attachMessageHandler(ws);
@@ -92,16 +91,16 @@ class GameManager {
     createInvite(ws, minutes) {
         if (!(minutes === 1 || minutes === 3 || minutes === 10 || minutes === 30)) return;
 
-        const gameIndex = this.findGameByPlayer(ws);
-        if (gameIndex > -1) {
-            const game = this.games[gameIndex];
-            const { _id } = ws.user;
-            const playerColor = game.player1.user._id.equals(_id) ? 'w' : 'b';
-            if (game.connectionStatus[playerColor] === 'disconnected') {
-                this.reconnectPlayer(ws, game);
-            }
-            return;
-        }
+        // const gameIndex = this.findGameByPlayer(ws);
+        // if (gameIndex > -1) {
+        //     const game = this.games[gameIndex];
+        //     const { _id } = ws.user;
+        //     const playerColor = game.player1.user._id.equals(_id) ? 'w' : 'b';
+        //     if (game.connectionStatus[playerColor] === 'disconnected') {
+        //         this.reconnectPlayer(ws, game);
+        //     }
+        //     return;
+        // }
 
         // todo: make a function for reusability
 

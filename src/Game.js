@@ -68,7 +68,7 @@ class Game {
 
     endGame(reason, loser) {
         clearInterval(this.timer);
-        const gameOverMessage = JSON.stringify({ type: "GAME_OVER", payload: { reason, loser } });
+        const gameOverMessage = JSON.stringify({ type: "game_over", payload: { reason, loser } });
         if (this.player1.readyState === this.player1.OPEN) {
             this.player1.send(gameOverMessage);
             this.player1.close();
