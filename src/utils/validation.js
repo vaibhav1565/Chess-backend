@@ -1,12 +1,17 @@
 const validator = require("validator");
 
 const validateData = (data) => {
+  const validFields = ["username", "email", "password"];
+  if (!(data.every(field => validFields.includes(field)))) {
+    throw new Error("Invalid fields");
+  }
+
   const {username, email, password} = data;
 
   if (!password || password.length < 8 || password.length > 100) {
     throw new Error("Password must be of 8-100 characters");
   }
-  if (!email || !validator.isEmail) {
+  if (!email || !validator.isEmail(email)) {
     throw new Error(`${email} is not a valid email address`);
   }
   if (!username || username.length < 5 || username.length > 10) {

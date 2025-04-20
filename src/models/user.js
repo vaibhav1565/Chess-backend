@@ -35,10 +35,9 @@ const userSchema = new mongoose.Schema(
 
 userSchema.methods.getJWT = function (guest = false) {
   const user = this;
-
   const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
     {
-      expiresIn: guest ? 10 * 60 : "30d"
+      expiresIn: guest ? 10 * 60 : "30d" // 10 minutes for guest
     }
   );
 

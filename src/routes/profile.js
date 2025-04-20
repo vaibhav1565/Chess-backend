@@ -16,5 +16,4 @@ profileRouter.get("/profile/view", userAuth, async (req, res) => {
   }
 });
 
-
 module.exports = profileRouter;

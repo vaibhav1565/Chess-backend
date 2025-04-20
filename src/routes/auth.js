@@ -18,7 +18,6 @@ authRouter.post("/register", async (req, res) => {
     const user = new User({ ...req.body, password: passwordHash });
 
     await user.save();
-    // console.log(user);
     res.json({ data: fieldFilter(user) });
   } catch (e) {
     res.status(400).json({ error: e.message });
