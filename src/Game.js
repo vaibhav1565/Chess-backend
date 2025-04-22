@@ -1,40 +1,40 @@
 const { Chess } = require("chess.js");
 const WebSocket = require('ws');
 
-// const { MOVE, GAME_BEGIN } = require('./messages.js');
-// const { GAME_OVER_MESSAGES } = require('./messages.js');
+const GAME_CONSTANTS = require('./constants');
+const {
+    COLORS,
+    CONNECTION_STATUS,
+    MESSAGE_TYPES,
+    GAME_END_REASONS,
+    GAME_SETTINGS,
+    PGN
+} = GAME_CONSTANTS;
 
-// const pgn = `[Event "It (cat.17)"]
-// [Site "Wijk aan Zee (Netherlands)"]
-// [Date "1999.??.??"]
-// [Round "?"]
-// [White "Garry Kasparov"]
-// [Black "Veselin Topalov"]
-// [Result "1-0"]
-// [TimeControl ""]
-// [Link "https://www.chess.com/games/view/969971"]
 
-// 1. e4 d6 2. d4 Nf6 3. Nc3 g6 4. Be3 Bg7 5. Qd2 c6 6. f3 b5 7. Nge2 Nbd7 8. Bh6
-// Bxh6 9. Qxh6 Bb7 10. a3 e5 11. O-O-O Qe7 12. Kb1 a6 13. Nc1 O-O-O 14. Nb3 exd4
-// 15. Rxd4 c5 16. Rd1 Nb6 17. g3 Kb8 18. Na5 Ba8 19. Bh3 d5 20. Qf4+ Ka7 21. Rhe1
-// d4 22. Nd5 Nbxd5 23. exd5 Qd6 24. Rxd4 cxd4 25. Re7+ Kb6 26. Qxd4+ Kxa5 27. b4+
-// Ka4 28. Qc3 Qxd5 29. Ra7 Bb7 30. Rxb7 Qc4 31. Qxf6 Kxa3 32. Qxa6+ Kxb4 33. c3+
-// Kxc3 34. Qa1+ Kd2 35. Qb2+ Kd1 36. Bf1 Rd2 37. Rd7 Rxd7 38. Bxc4 bxc4 39. Qxh8
-// Rd3 40. Qa8 c3`;
-
+const createChessInstance = () => {
+    const chessInstance = new Chess();
+    chessInstance.loadPgn(PGN);
+    return chessInstance;
+}
 
 class Game {
+
+    static GAME_STATE = {
+        ACTIVE: 'active',
+        ENDED: 'ended'
+    }
+
     constructor(player1, player2, gameManager, minutes) {
         this.player1 = player1;
         this.player2 = player2;
         this.gameManager = gameManager;
 
-        this.chess = new Chess();
-        // this.chess.loadPgn(pgn);
+        this.chess = createChessInstance();
 
         this.connectionStatus = {
-            'w': 'connected',
-            'b': 'connected'
+            [player1.user._id]: CONNECTION_STATUS.CONNECTED,
+            [player2.user._id]: CONNECTION_STATUS.CONNECTED
         }
 
         this.timeLeft = {
@@ -42,27 +42,24 @@ class Game {
             [player2.user._id]: minutes * 60 * 1000
         }
 
-
         new Array(player1, player2).forEach((player, index) => {
             const opponent = index === 0 ? player2 : player1;
-            if (player.readyState === WebSocket.OPEN) {
-                player.send(JSON.stringify({
-                    type: "game_begin",
-                    payload: {
-                        color: index === 0 ? 'w' : 'b',
-                        minutes,
-                        opponent: {
-                            _id: opponent.user._id,
-                            username: opponent.user.username
-                        }
+            this.broadcastToSocket(player, {
+                type: MESSAGE_TYPES.GAME_BEGIN,
+                payload: {
+                    color: index === 0 ? COLORS.WHITE : COLORS.BLACK,
+                    minutes,
+                    opponent: {
+                        _id: opponent.user._id,
+                        username: opponent.user.username
                     }
-                }));
-            }
+                }
+            });
         })
 
         console.log(`[Game Created] ${player1.user.username} (w) vs ${player2.user.username} (b) - ${minutes} min`);
 
-        this.gameState = "active";
+        this.gameState = Game.GAME_STATE.ACTIVE;
 
         this.drawOffer = null;
         this.drawOffersCount = {
@@ -70,14 +67,12 @@ class Game {
             [player2.user._id]: 0
         };
 
-        this.MAX_MESSAGE_LENGTH = 200; // Maximum characters per message
-
         this.timer = null;
-        this.handleTimer();
+        this.updateGameClock();
     }
 
-    handleTimer() {
-        if (this.gameState !== "active") {
+    updateGameClock() {
+        if (this.gameState === Game.GAME_STATE.ENDED) {
             clearInterval(this.timer);
             return;
         }
@@ -88,9 +83,9 @@ class Game {
 
         this.timer = setInterval(() => {
             const currentTurn = this.chess.turn();
-            const currentId = this.chess.turn() === 'w' ? this.player1.user._id : this.player2.user._id;
+            const currentId = this.chess.turn() === COLORS.WHITE ? this.player1.user._id : this.player2.user._id;
 
-            // console.log(`[Timer] ${currentTurn === 'w' ? this.player1.user.username : this.player2.user.username} has ${Math.floor(this.timeLeft[currentId] / 1000)}s left`);
+            // console.log(`[Timer] ${currentTurn === COLORS.WHITE ? this.player1.user.username : this.player2.user.username} has ${Math.floor(this.timeLeft[currentId] / 1000)}s left`);
 
             const currentTime = Date.now();
             const elapsed = currentTime - lastTime;
@@ -98,36 +93,33 @@ class Game {
 
             this.timeLeft[currentId] -= elapsed;
 
-
             if (this.timeLeft[currentId] <= 0) {
                 clearInterval(this.timer);
-                if (this.connectionStatus['w'] === 'disconnected' && this.connectionStatus['b'] === 'disconnected') {
-                    this.endGame("abort", null);
+                if (this.connectionStatus[this.player1.user._id] === CONNECTION_STATUS.DISCONNECTED &&
+                    this.connectionStatus[this.player2.user._id] === CONNECTION_STATUS.DISCONNECTED) {
+                    this.endGame(GAME_END_REASONS.ABORT, null);
                 } else {
-                    this.endGame("timeout", currentTurn);
+                    this.endGame(GAME_END_REASONS.TIMEOUT, currentTurn);
                 }
             }
-        }, 1000)
+        }, GAME_SETTINGS.INTERVAL)
     }
 
     endGame(reason, loser) {
-        if (this.gameState !== "active") {
+        if (this.gameState === Game.GAME_STATE.ENDED) {
+            console.log("endGame- Game already ended", reason, loser);
             return;
         }
-        this.gameState = "ended";
+        this.gameState = Game.GAME_STATE.ENDED;
+        clearInterval(this.timer);
 
         console.log(`[Game Over] Reason: ${reason}, Loser: ${loser}`);
 
-        const gameOverMessage = JSON.stringify({ type: "game_over", payload: { reason, loser } });
-        if (this.player1.readyState === WebSocket.OPEN) {
-            this.player1.send(gameOverMessage);
-            // this.player1.close();
-        }
-        if (this.player2.readyState === WebSocket.OPEN) {
-            this.player2.send(gameOverMessage);
-            // this.player2.close();
-        }
-        this.gameManager.removeGame(this);
+        const gameOverMessage = JSON.stringify({ type: MESSAGE_TYPES.GAME_OVER, payload: { reason, loser } });
+        this.broadcastToSocket(this.player1, gameOverMessage);
+        this.broadcastToSocket(this.player2, gameOverMessage);
+
+        this.cleanup();
     }
 
     getOtherPlayer(ws) {
@@ -136,11 +128,11 @@ class Game {
         return null;
     }
 
-    handleGameOver() {
+    determineGameOutcome() {
         let reason;
         let loser = null;
         if (this.chess.isCheckmate()) {
-            reason = "checkmate"
+            reason = GAME_END_REASONS.CHECKMATE
             loser = this.chess.turn();
         }
         // else if (this.chess.isDrawByFiftyMoves()) {
@@ -155,46 +147,45 @@ class Game {
         // else if (this.chess.isThreefoldRepetition()) {
         //     reason = GAME_OVER_MESSAGES.THREEFOLD_REPETITION;
         // }
-        else {
-            reason = "draw";
+        else if (this.chess.isDraw()) {
+            reason = GAME_END_REASONS.DRAW;
         }
 
-        console.log(`[Game Stats] Total Moves: ${Math.floor(this.chess.history().length / 2)}`);
-        console.log(`[Game Stats] White Time Left: ${Math.floor(this.timeLeft[this.player1.user._id] / 1000)}s`);
-        console.log(`[Game Stats] Black Time Left: ${Math.floor(this.timeLeft[this.player2.user._id] / 1000)}s`);
+        console.log(`[Game Stats] Total Moves: ${Math.floor(this.chess.history().length)}`);
+        console.log(`[Game Stats] White Time Left: ${Math.floor(this.timeLeft[this.player1.user._id])}`);
+        console.log(`[Game Stats] Black Time Left: ${Math.floor(this.timeLeft[this.player2.user._id])}`);
 
         this.endGame(reason, loser);
-        this.cleanup();
     }
 
     handleChat(ws, message) {
-        if (this.gameState !== "active") {
-            ws.send(JSON.stringify({
-                type: "error",
+        if (this.gameState !== Game.GAME_STATE.ACTIVE) {
+            this.broadcastToSocket(ws, {
+                type: MESSAGE_TYPES.ERROR,
                 payload: "Cannot chat - game is not active"
-            }));
+            });
             return;
         }
 
         const text = message.payload?.text?.trim();
         if (!text) {
-            ws.send(JSON.stringify({
-                type: "error",
+            this.broadcastToSocket(ws, {
+                type: MESSAGE_TYPES.ERROR,
                 payload: "Message cannot be empty"
-            }));
+            });
             return;
         }
 
-        if (text.length > this.MAX_MESSAGE_LENGTH) {
-            ws.send(JSON.stringify({
-                type: "error",
-                payload: `Message too long (max ${this.MAX_MESSAGE_LENGTH} characters)`
-            }));
+        if (text.length > GAME_SETTINGS.MAX_MESSAGE_LENGTH) {
+            this.broadcastToSocket(ws, {
+                type: MESSAGE_TYPES.ERROR,
+                payload: `Message too long (max ${GAME_SETTINGS.MAX_MESSAGE_LENGTH} characters)`
+            });
             return;
         }
 
         const chatMessage = {
-            type: "chat_message",
+            type: MESSAGE_TYPES.CHAT_MESSAGE,
             payload: {
                 from: ws.user.username,
                 text: text,
@@ -205,95 +196,77 @@ class Game {
         console.log(`[Chat] ${ws.user.username}: ${text}`);
 
         const otherPlayer = this.getOtherPlayer(ws);
-        if (otherPlayer.readyState === WebSocket.OPEN) {
-            otherPlayer.send(JSON.stringify(chatMessage));
-        }
+        this.broadcastToSocket(otherPlayer, chatMessage);
     }
 
-    makeMove(ws, message) {
-        // console.log(message);
-        if (this.gameState !== "active") {
-            ws.send(JSON.stringify({ type: "error", payload: "Game is not active" }));
-            return;
-        }
-        if (message.type === "resign") {
-            clearInterval(this.timer);
-            this.endGame("resign", ws === this.player1 ? 'w' : 'b');
-            return;
-        }
+    handleResignation(ws) {
+        clearInterval(this.timer);
+        this.endGame(GAME_END_REASONS.RESIGN, ws === this.player1 ? COLORS.WHITE : COLORS.BLACK);
+    }
 
-        if (message.type === "chat_message") {
-            this.handleChat(ws, message);
+    handleDrawOffer(ws) {
+        if (this.drawOffersCount[ws.user._id] >= GAME_SETTINGS.MAX_DRAW_OFFERS) {
+            this.broadcastToSocket(ws, {
+                type: MESSAGE_TYPES.ERROR,
+                payload: "You have reached the maximum number of draw offers (3)"
+            });
             return;
         }
 
-        if (message.type === "draw_offer") {
-            if (this.drawOffersCount[ws.user._id] >= 3) {
-                ws.send(JSON.stringify({
-                    type: "error",
-                    payload: "You have reached the maximum number of draw offers (3)"
-                }));
-                return;
-            }
-
-            if (this.drawOffer === ws.user._id) {
-                ws.send(JSON.stringify({
-                    type: "error",
-                    payload: "Draw already offered"
-                }));
-                return;
-            }
-
-            this.drawOffer = ws.user._id;
-            this.drawOffersCount[ws.user._id]++;
-
-            const otherPlayer = this.getOtherPlayer(ws);
-            if (otherPlayer.readyState === WebSocket.OPEN) {
-                otherPlayer.send(JSON.stringify({
-                    type: "draw_offer"
-                }));
-            }
+        if (this.drawOffer !== null) {
+            this.broadcastToSocket(ws, {
+                type: MESSAGE_TYPES.ERROR,
+                payload: "Draw already offered"
+            });
             return;
         }
 
-        if (message.type === "draw_accept") {
-            if (!this.drawOffer) {
-                ws.send(JSON.stringify({ type: "error", payload: "No draw offer pending" }));
-                return;
+        this.drawOffer = ws.user._id;
+        this.drawOffersCount[ws.user._id]++;
+
+        const otherPlayer = this.getOtherPlayer(ws);
+        const message = {
+            type: MESSAGE_TYPES.DRAW_OFFER,
+            payload: {
+                from: ws.user._id
             }
-            if (this.drawOffer === ws.user._id) {
-                ws.send(JSON.stringify({ type: "error", payload: "Cannot accept your own draw offer" }));
-                return;
-            }
-            clearInterval(this.timer);
-            this.endGame("draw", null);
+        };
+        this.broadcastToSocket(otherPlayer, message);
+        this.broadcastToSocket(ws, message);
+    }
+
+    handleDrawAccept(ws) {
+        if (!this.drawOffer) {
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "No draw offer pending" });
+            return;
+        }
+        if (this.drawOffer === ws.user._id) {
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "Cannot accept your own draw offer" });
+            return;
+        }
+        this.endGame(GAME_END_REASONS.DRAW_BY_AGREEMENT, null);
+    }
+
+    handleDrawReject(ws) {
+        if (!this.drawOffer) {
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "No draw offer pending" });
+            return;
+        }
+        if (this.drawOffer === ws.user._id) {
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "Cannot reject your own draw offer" });
             return;
         }
 
-        if (message.type === "draw_reject") {
-            if (!this.drawOffer) {
-                ws.send(JSON.stringify({ type: "error", payload: "No draw offer pending" }));
-                return;
-            }
-            if (this.drawOffer === ws.user._id) {
-                ws.send(JSON.stringify({ type: "error", payload: "Cannot reject your own draw offer" }));
-                return;
-            }
+        const offeringPlayer = this.getOtherPlayer(ws);
+        this.drawOffer = null;
 
-            const offeringPlayer = this.getOtherPlayer(ws);
-            this.drawOffer = null;
+        this.broadcastToSocket(offeringPlayer, {
+            type: MESSAGE_TYPES.DRAW_REJECTED,
+        });
+    }
 
-            if (offeringPlayer.readyState === WebSocket.OPEN) {
-                offeringPlayer.send(JSON.stringify({
-                    type: "draw_rejected",
-                }));
-            }
-            return;
-        }
-
-        if (message.type !== "move") return;
-
-        const isValidTurn = (this.chess.turn() === 'w' && ws.user._id === this.player1.user._id) || (this.chess.turn() === 'b' && ws.user._id === this.player2.user._id);
+    handleChessMove(ws, message) {
+        const isValidTurn = (this.chess.turn() === COLORS.WHITE && ws.user._id === this.player1.user._id) || (this.chess.turn() === COLORS.BLACK && ws.user._id === this.player2.user._id);
         if (!isValidTurn) return;
 
         try {
@@ -306,65 +279,87 @@ class Game {
             if (!move) {
                 throw new Error("Invalid move");
             }
+            console.log(`[MOVE]- ${ws.user.username}:`, message.payload);
 
             clearInterval(this.timer);
 
             const other = this.getOtherPlayer(ws);
-            if (other.readyState === WebSocket.OPEN) {
-                other.send(JSON.stringify(message));
-            }
+            this.broadcastToSocket(other, message);
             if (this.chess.isGameOver()) {
-                this.handleGameOver();
+                this.determineGameOutcome();
             }
             else {
-                this.handleTimer();
+                this.updateGameClock();
             }
-
-            console.log(`[Move] ${ws.user.username}: ${move.san}`);
         }
         catch (e) {
             console.log("ERROR:", e);
-            ws.send(JSON.stringify({ type: "error", payload: e.message }));
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: e.message });
+        }
+    }
+
+    handleGameAction(ws, message) {
+
+        if (this.gameState !== Game.GAME_STATE.ACTIVE) {
+            this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "Game is not active" });
+            return;
+        }
+
+        const handlers = {
+            [MESSAGE_TYPES.RESIGN]: () => this.handleResignation(ws),
+            [MESSAGE_TYPES.CHAT_MESSAGE]: () => this.handleChat(ws, message),
+            [MESSAGE_TYPES.DRAW_OFFER]: () => this.handleDrawOffer(ws),
+            [MESSAGE_TYPES.DRAW_ACCEPT]: () => this.handleDrawAccept(ws),
+            [MESSAGE_TYPES.DRAW_REJECT]: () => this.handleDrawReject(ws),
+            [MESSAGE_TYPES.MOVE]: () => this.handleChessMove(ws, message)
+        };
+
+        const handler = handlers[message.type];
+        if (handler) {
+            handler();
+        }
+        else {
+            console.log("[Message]- Unrecognised message type", message);
         }
     }
 
     handleDisconnection(ws) {
-        const message = JSON.stringify({ type: "opponent_disconnect" });
 
-        const color = ws.user._id === this.player1.user._id ? 'w' : 'b';
-        this.connectionStatus[color] = 'disconnected';
+        const color = ws.user._id === this.player1.user._id ? COLORS.WHITE : COLORS.BLACK;
+        this.connectionStatus[ws.user._id] = CONNECTION_STATUS.DISCONNECTED;
+
+        const message = JSON.stringify({ type: MESSAGE_TYPES.OPPONENT_DISCONNECT });
 
         const otherPlayer = this.getOtherPlayer(ws);
-        if (otherPlayer.readyState === WebSocket.OPEN) {
-            otherPlayer.send(message);
-        }
+        this.broadcastToSocket(otherPlayer, message);
 
         console.log(`[Disconnect] ${ws.user.username} (${color}) disconnected`);
+
+        // Check if both players are disconnected
+        if (this.connectionStatus[this.player1.user._id] === CONNECTION_STATUS.DISCONNECTED &&
+            this.connectionStatus[this.player2.user._id] === CONNECTION_STATUS.DISCONNECTED) {
+            console.log('[Game] Both players disconnected - ending game');
+            this.endGame(GAME_END_REASONS.ABORT, null);
+        }
     }
 
     cleanup() {
-        console.log('[Cleanup] Starting game cleanup');
-        // Clear any running timers
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
-        }
+        // console.log('[Cleanup] Starting game cleanup');
+        // if (this.timer) {
+        //     clearInterval(this.timer);
+        //     this.timer = null;
+        // }
 
-        // Close WebSocket connections
-        if (this.player1?.readyState === WebSocket.OPEN) {
-            this.player1.close();
-        }
-        if (this.player2?.readyState === WebSocket.OPEN) {
-            this.player2.close();
-        }
+        // this.gameState = Game.GAME_STATE.ENDED;
 
-        // Clear game state
-        this.gameState = "ended";
-        this.chess = null;
-        this.timeLeft = null;
-        this.drawOffer = null;
-        this.drawOffersCount = null;
-        this.connectionStatus = null;
+        // Remove game from manager
+        this.gameManager.removeGame(this);
+    }
+
+    broadcastToSocket(ws, message) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(message));
+        }
     }
 }
 
