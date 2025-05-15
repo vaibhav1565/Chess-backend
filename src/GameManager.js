@@ -2,33 +2,31 @@ const Game = require("./Game.js");
 const { v4: uuidv4 } = require('uuid');
 const WebSocket = require('ws');
 
-const GAME_CONSTANTS = require('./constants');
 const {
-    // CONNECTION_STATUS,
-    GAME_SETTINGS,
     INVITE,
     MESSAGE_TYPES,
-    MESSAGE_VALIDATION
-} = GAME_CONSTANTS;
+    MESSAGE_VALIDATION,
+    TIME_CONTROLS
+} = require('./chessConstants');
 
 class GameManager {
-
     constructor() {
-        this.waitingUser = Object.fromEntries(
-            GAME_SETTINGS.VALID_CONTROLS.map(time => [time, null])
-        );
-        this.queueLocks = Object.fromEntries(
-            GAME_SETTINGS.VALID_CONTROLS.map(time => [time, false])
-        );
+        this.waitingUser = {};
+        this.queueLocks = {};
         this.games = [];
         this.invites = {};
 
-        /* Store invite codes: 
-            { 
-            code: {ws: player, minutes} 
-            }
-        */
+        TIME_CONTROLS.forEach(({ minutes, increment }) => {
+            const key = `${minutes}:${increment}`;
+            this.waitingUser[key] = null;
+            this.queueLocks[key] = false;
+        });
+    }
 
+    isValidTimeControl(timeConfig) {
+        return TIME_CONTROLS.some(control =>
+            control.minutes === timeConfig.minutes && control.increment === timeConfig.increment
+        );
     }
 
     // for Game.js
@@ -45,86 +43,110 @@ class GameManager {
     }
 
     addPlayerViaInvite(ws, inviteCode) {
-        console.log(`Attempting to join with invite code: ${inviteCode}`);
+        console.group();
+        console.log("[ADD PLAYER VIA INVITE]");
+        console.log("Function payload:", ws, inviteCode);
 
-        if (this.invites[inviteCode]) {
-            const otherPlayer = this.invites[inviteCode]['ws'];
-
-            if (otherPlayer.user._id === ws.user._id) {
-                console.log("Player tried to join their own invite");
-                return;
-            }
-
-            console.log(`Invite code valid. Players matched: ${otherPlayer.user.username} and ${ws.user.username}`);
-
-            const newGame = new Game(otherPlayer, ws, this, 0.2); // intentionally set for testing purpose
-            this.games.push(newGame);
-            console.log(`Game created via invite. Total games: ${this.games.length}`);
-
-            this.attachMessageHandler(otherPlayer);
-            this.attachMessageHandler(ws);
-
-            delete this.invites[inviteCode];
-        } else {
+        if (!this.invites[inviteCode]) {
             console.log(`Invalid invite code attempt: ${inviteCode}`);
-            this.sendMessage(ws, { type: MESSAGE_TYPES.ERROR, payload: MESSAGE_VALIDATION.INVALID_INVITE_CODE });
+            console.groupEnd();
+            throw new Error(MESSAGE_VALIDATION.INVALID_INVITE_CODE);
         }
-    }
 
-    async addPlayerViaQueue(ws, minutes) {
-        console.log(`Player ${ws.user.username} joining queue for ${minutes}-minute game`);
+        const otherPlayer = this.invites[inviteCode]['ws'];
 
-        if (!GAME_SETTINGS.VALID_CONTROLS.includes(minutes)) {
-            console.log(`Invalid time control selected: ${minutes}`);
-            this.sendMessage(ws, { type: MESSAGE_TYPES.ERROR, payload: MESSAGE_VALIDATION.INVALID_TIME_CONTROL });
+        if (otherPlayer.user._id === ws.user._id) {
+            console.log("Player tried to join their own invite");
+            console.groupEnd();
             return;
         }
 
+        console.log(`Invite code valid. Players matched: ${otherPlayer.user.username} and ${ws.user.username}`);
+
+        const { minutes, increment } = this.invites[inviteCode];
+        const newGame = new Game(otherPlayer, ws, this, minutes, increment);
+        this.games.push(newGame);
+        console.log(`Game created via invite. Total games: ${this.games.length}`);
+
+        this.attachMessageHandler(otherPlayer);
+        this.attachMessageHandler(ws);
+
+        delete this.invites[inviteCode];
+        console.groupEnd();
+    }
+
+    async addPlayerViaQueue(ws, timeConfig) {
+        console.group();
+        console.log("Function payload:", timeConfig);
+        const timeControlKey = `${timeConfig.minutes}:${timeConfig.increment}`;
+        console.log(`Player ${ws.user.username} joining queue for ${timeControlKey} game`);
+
+        const MAX_WAIT_TIME = 5000; // 5 seconds
+        const startTime = Date.now();
+
+        if (! this.isValidTimeControl(timeConfig)) {
+            console.log(`Invalid time control selected: ${timeControlKey}`);
+            console.groupEnd();
+            throw new Error(MESSAGE_VALIDATION.INVALID_TIME_CONTROL);
+        }
+
         // Wait until lock is available
-        while (this.queueLocks[minutes]) {
+        while (this.queueLocks[timeControlKey]) {
+            if (Date.now() - startTime > MAX_WAIT_TIME) {
+                console.log(`Timeout while waiting for queue lock on ${timeControlKey}`);
+                console.groupEnd();
+                throw new Error("Queue lock timeout");
+            }
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
         try {
-            this.queueLocks[minutes] = true;
+            this.queueLocks[timeControlKey] = true;
 
-            const waitingPlayer = this.waitingUser[minutes];
+            const waitingPlayer = this.waitingUser[timeControlKey];
             if (!waitingPlayer || waitingPlayer.readyState !== WebSocket.OPEN) {
                 console.log(`No waiting player. Player ${ws.user.username} added to queue`);
-                this.waitingUser[minutes] = ws;
+                this.waitingUser[timeControlKey] = ws;
                 this.sendMessage(ws, { type: MESSAGE_TYPES.WAIT });
+                console.groupEnd();
                 return;
             }
 
-            if (this.waitingUser[minutes].user._id === ws.user._id) {
+            if (waitingPlayer.user._id === ws.user._id) {
                 console.log(`Player ${ws.user.username} is already in the queue`);
+                console.groupEnd();
                 return;
             }
 
             console.log(`Matching ${waitingPlayer.user.username} with ${ws.user.username}`);
-            this.waitingUser[minutes] = null;
+            this.waitingUser[timeControlKey] = null;
+            this.queueLocks[timeControlKey] = false;
 
-            const newGame = new Game(waitingPlayer, ws, this, 0.2); //intentionally set for testing purpose
+            const newGame = new Game(waitingPlayer, ws, this, timeConfig.minutes, timeConfig.increment);
             this.games.push(newGame);
             console.log(`Game created via queue. Total games: ${this.games.length}`);
 
             this.attachMessageHandler(waitingPlayer);
             this.attachMessageHandler(ws);
+        } catch (e) {
+            console.log(e);
         } finally {
-            this.queueLocks[minutes] = false;
+            this.queueLocks[timeControlKey] = false;
+            console.groupEnd();
         }
     }
 
-    createInvite(ws, minutes) {
-        console.log(`Player ${ws.user.username} creating invite for ${minutes}-minute game`);
+    createInviteCode(ws, timeConfig) {
+        console.log(`Player ${ws.user.username} creating invite for ${timeConfig.minutes} | ${timeConfig.increment} game`);
 
-        if (!GAME_SETTINGS.VALID_CONTROLS.includes(minutes)) {
-            console.log(`Invalid time control for invite: ${minutes}`);
+        if (! this.isValidTimeControl(timeConfig)) {
+            console.log(`Invalid time control for invite: ${timeConfig.minutes} | ${timeConfig.increment}`);
             return;
         }
 
         const inviteCode = uuidv4().slice(0, INVITE.CODE_LENGTH);
-        this.invites[inviteCode] = { ws, minutes };
+        // const timeControlKey = `${timeConfig.minutes}:${timeConfig.increment}`;
+        this.invites[inviteCode] = { ws, minutes: timeConfig.minutes, increment: timeConfig.increment };
         console.log(`Invite code ${inviteCode} created by ${ws.user.username}`);
 
         setTimeout(() => {
@@ -136,7 +158,6 @@ class GameManager {
 
         this.sendMessage(ws, { type: MESSAGE_TYPES.INVITE_CODE, payload: { code: inviteCode } });
     }
-
     removePlayer(ws) {
         console.log(`Removing player: ${ws.user.username}`);
 
@@ -167,23 +188,26 @@ class GameManager {
     }
 
     attachMessageHandler(ws) {
-        ws.on('message', (data) => {
-            try {
-                const message = JSON.parse(data.toString());
-                console.log(`Received message from ${ws.user.username}: ${JSON.stringify(message)}`);
+        if (!ws._messageHandler) {
+            ws._messageHandler = (data) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    console.log(`Received message from ${ws.user.username}: ${JSON.stringify(message)}`);
 
-                const gameIndex = this.findGameByPlayer(ws);
-                if (gameIndex > -1) {
-                    const game = this.games[gameIndex];
-                    game.handleGameAction(ws, message);
-                } else {
-                    console.log(`No active game found for ${ws.user.username}`);
+                    const gameIndex = this.findGameByPlayer(ws);
+                    if (gameIndex > -1) {
+                        const game = this.games[gameIndex];
+                        game.handleGameAction(ws, message);
+                    } else {
+                        console.log(`No active game found for ${ws.user.username}`);
+                    }
+                } catch (e) {
+                    console.log("Message parse error:", e);
+                    throw new Error(MESSAGE_VALIDATION.INVALID_MESSAGE_FORMAT)
                 }
-            } catch (e) {
-                console.error("Message parse error:", e);
-                this.sendMessage(ws, { type: MESSAGE_TYPES.ERROR, payload: MESSAGE_VALIDATION.INVALID_MESSAGE_FORMAT });
-            }
-        });
+            };
+            ws.on('message', ws._messageHandler);
+        }
     }
 
     sendMessage(ws, message) {

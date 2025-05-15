@@ -1,22 +1,21 @@
-const { Chess } = require("chess.js");
 const WebSocket = require('ws');
+const {Chess} = require("chess.js");
 
-const GAME_CONSTANTS = require('./constants');
 const {
     COLORS,
     CONNECTION_STATUS,
     MESSAGE_TYPES,
     GAME_END_REASONS,
     GAME_SETTINGS,
-    PGN
-} = GAME_CONSTANTS;
+    INITIAL_PGN,
+} = require('./chessConstants');
 
 
 const createChessInstance = () => {
     const chessInstance = new Chess();
-    chessInstance.loadPgn(PGN);
+    // chessInstance.loadPgn(INITIAL_PGN, {strict: true});
     return chessInstance;
-}
+};
 
 class Game {
 
@@ -25,10 +24,13 @@ class Game {
         ENDED: 'ended'
     }
 
-    constructor(player1, player2, gameManager, minutes) {
+    constructor(player1, player2, gameManager, minutes, incrementPerTurn) {
         this.player1 = player1;
         this.player2 = player2;
         this.gameManager = gameManager;
+
+        this.minutes = minutes;
+        this.incrementPerTurn = incrementPerTurn;
 
         this.chess = createChessInstance();
 
@@ -49,6 +51,7 @@ class Game {
                 payload: {
                     color: index === 0 ? COLORS.WHITE : COLORS.BLACK,
                     minutes,
+                    incrementPerTurn,
                     opponent: {
                         _id: opponent.user._id,
                         username: opponent.user.username
@@ -62,10 +65,10 @@ class Game {
         this.gameState = Game.GAME_STATE.ACTIVE;
 
         this.drawOffer = null;
-        this.drawOffersCount = {
-            [player1.user._id]: 0,
-            [player2.user._id]: 0
-        };
+        // this.drawOffersCount = {
+        //     [player1.user._id]: 0,
+        //     [player2.user._id]: 0
+        // };
 
         this.timer = null;
         this.updateGameClock();
@@ -91,7 +94,7 @@ class Game {
             const elapsed = currentTime - lastTime;
             lastTime = currentTime;
 
-            this.timeLeft[currentId] -= elapsed;
+            this.timeLeft[currentId] -= (elapsed - this.incrementPerTurn);
 
             if (this.timeLeft[currentId] <= 0) {
                 clearInterval(this.timer);
@@ -112,14 +115,19 @@ class Game {
         }
         this.gameState = Game.GAME_STATE.ENDED;
         clearInterval(this.timer);
+        this.cleanup();
 
         console.log(`[Game Over] Reason: ${reason}, Loser: ${loser}`);
 
-        const gameOverMessage = JSON.stringify({ type: MESSAGE_TYPES.GAME_OVER, payload: { reason, loser } });
+        console.log(`[Game Stats] Total Moves: ${Math.floor(this.chess.history().length)}`);
+        console.log(`[Game Stats] White Time Left: ${Math.floor(this.timeLeft[this.player1.user._id])}`);
+        console.log(`[Game Stats] Black Time Left: ${Math.floor(this.timeLeft[this.player2.user._id])}`);
+
+        const gameOverMessage = { type: MESSAGE_TYPES.GAME_OVER, payload: { reason, loser } };
         this.broadcastToSocket(this.player1, gameOverMessage);
         this.broadcastToSocket(this.player2, gameOverMessage);
 
-        this.cleanup();
+        console.log("###############################################")
     }
 
     getOtherPlayer(ws) {
@@ -135,25 +143,21 @@ class Game {
             reason = GAME_END_REASONS.CHECKMATE
             loser = this.chess.turn();
         }
-        // else if (this.chess.isDrawByFiftyMoves()) {
-        //     reason = GAME_OVER_MESSAGES.FIFTY_MOVES;
-        // }
-        // else if (this.chess.isInsufficientMaterial()) {
-        //     reason = GAME_OVER_MESSAGES.INSUFFICIENT_MATERIAL;
-        // }
-        // else if (this.chess.isStalemate()) {
-        //     reason = GAME_OVER_MESSAGES.STALEMATE;
-        // }
-        // else if (this.chess.isThreefoldRepetition()) {
-        //     reason = GAME_OVER_MESSAGES.THREEFOLD_REPETITION;
-        // }
+        else if (this.chess.isDrawByFiftyMoves()) {
+            reason = GAME_OVER_MESSAGES.FIFTY_MOVES;
+        }
+        else if (this.chess.isInsufficientMaterial()) {
+            reason = GAME_OVER_MESSAGES.INSUFFICIENT_MATERIAL;
+        }
+        else if (this.chess.isStalemate()) {
+            reason = GAME_OVER_MESSAGES.STALEMATE;
+        }
+        else if (this.chess.isThreefoldRepetition()) {
+            reason = GAME_OVER_MESSAGES.THREEFOLD_REPETITION;
+        }
         else if (this.chess.isDraw()) {
             reason = GAME_END_REASONS.DRAW;
         }
-
-        console.log(`[Game Stats] Total Moves: ${Math.floor(this.chess.history().length)}`);
-        console.log(`[Game Stats] White Time Left: ${Math.floor(this.timeLeft[this.player1.user._id])}`);
-        console.log(`[Game Stats] Black Time Left: ${Math.floor(this.timeLeft[this.player2.user._id])}`);
 
         this.endGame(reason, loser);
     }
@@ -189,7 +193,6 @@ class Game {
             payload: {
                 from: ws.user.username,
                 text: text,
-                // timestamp: Date.now()
             }
         };
 
@@ -205,13 +208,13 @@ class Game {
     }
 
     handleDrawOffer(ws) {
-        if (this.drawOffersCount[ws.user._id] >= GAME_SETTINGS.MAX_DRAW_OFFERS) {
-            this.broadcastToSocket(ws, {
-                type: MESSAGE_TYPES.ERROR,
-                payload: "You have reached the maximum number of draw offers (3)"
-            });
-            return;
-        }
+        // if (this.drawOffersCount[ws.user._id] >= GAME_SETTINGS.MAX_DRAW_OFFERS) {
+        //     this.broadcastToSocket(ws, {
+        //         type: MESSAGE_TYPES.ERROR,
+        //         payload: `You have reached the maximum number of draw offers (${GAME_SETTINGS.MAX_DRAW_OFFERS})`
+        //     });
+        //     return;
+        // }
 
         if (this.drawOffer !== null) {
             this.broadcastToSocket(ws, {
@@ -222,17 +225,13 @@ class Game {
         }
 
         this.drawOffer = ws.user._id;
-        this.drawOffersCount[ws.user._id]++;
+        // this.drawOffersCount[ws.user._id]++;
 
         const otherPlayer = this.getOtherPlayer(ws);
         const message = {
-            type: MESSAGE_TYPES.DRAW_OFFER,
-            payload: {
-                from: ws.user._id
-            }
+            type: MESSAGE_TYPES.DRAW_OFFER
         };
         this.broadcastToSocket(otherPlayer, message);
-        this.broadcastToSocket(ws, message);
     }
 
     handleDrawAccept(ws) {
@@ -244,6 +243,8 @@ class Game {
             this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "Cannot accept your own draw offer" });
             return;
         }
+        const otherPlayer = this.getOtherPlayer(ws);
+        this.broadcastToSocket(otherPlayer, {type: MESSAGE_TYPES.DRAW_ACCEPTED});
         this.endGame(GAME_END_REASONS.DRAW_BY_AGREEMENT, null);
     }
 
@@ -299,7 +300,6 @@ class Game {
     }
 
     handleGameAction(ws, message) {
-
         if (this.gameState !== Game.GAME_STATE.ACTIVE) {
             this.broadcastToSocket(ws, { type: MESSAGE_TYPES.ERROR, payload: "Game is not active" });
             return;
@@ -328,7 +328,7 @@ class Game {
         const color = ws.user._id === this.player1.user._id ? COLORS.WHITE : COLORS.BLACK;
         this.connectionStatus[ws.user._id] = CONNECTION_STATUS.DISCONNECTED;
 
-        const message = JSON.stringify({ type: MESSAGE_TYPES.OPPONENT_DISCONNECT });
+        const message = { type: MESSAGE_TYPES.OPPONENT_DISCONNECT };
 
         const otherPlayer = this.getOtherPlayer(ws);
         this.broadcastToSocket(otherPlayer, message);
@@ -344,15 +344,6 @@ class Game {
     }
 
     cleanup() {
-        // console.log('[Cleanup] Starting game cleanup');
-        // if (this.timer) {
-        //     clearInterval(this.timer);
-        //     this.timer = null;
-        // }
-
-        // this.gameState = Game.GAME_STATE.ENDED;
-
-        // Remove game from manager
         this.gameManager.removeGame(this);
     }
 

@@ -2,7 +2,9 @@ const validator = require("validator");
 
 const validateData = (data) => {
   const validFields = ["username", "email", "password"];
-  if (!(data.every(field => validFields.includes(field)))) {
+  const isValid = Object.keys(data).every(field => validFields.includes(field));
+  if (! isValid) {
+    console.log(data);
     throw new Error("Invalid fields");
   }
 
