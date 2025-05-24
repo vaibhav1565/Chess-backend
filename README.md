@@ -47,8 +47,8 @@ This is the backend for the Chess game built using the **MERN stack** with **rea
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-backend-repo-url>
-cd chess-backend
+git clone https://github.com/vaibhav1565/Chess-backend
+cd Chess-backend
 ```
 
 ### 2. Install Dependencies
@@ -67,3 +67,5 @@ MONGODB_CONNECTION_STRING=your_mongodb_connection_string_here
 ```bash
 npm run dev
 ```
+
+### 5. To access frontend of chess app, setup the [Chess-frontend](https://github.com/vaibhav1565/Chess-frontend)
