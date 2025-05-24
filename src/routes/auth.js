@@ -18,6 +18,15 @@ authRouter.post("/register", async (req, res) => {
     const user = new User({ ...req.body, password: passwordHash });
 
     await user.save();
+
+    const token = await user.getJWT();
+
+    res.cookie("token", token,
+      {
+        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      }
+    );
+
     res.json({ data: fieldFilter(user) });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -43,7 +52,7 @@ authRouter.post("/login", async (req, res) => {
         }
       );
 
-      res.json({ data: fieldFilter(user), token });
+      res.json({ data: fieldFilter(user) });
     } else {
       throw new Error("Invalid credentials");
     }

@@ -64,14 +64,14 @@ router.post('/guest/signup', async (req, res) => {
         // Generate JWT token
         const token = user.getJWT(true);
 
-        res.cookie('token', token, { expires: new Date(Date.now() + 10 * 60 * 1000) }); //10 minutes
+        res.cookie('token', token, { expires: new Date(Date.now() + 10 * 60 * 60 * 1000) }); //10 hours
 
         // Send response with safe data
         res.status(201).json({
             data: {
                 _id: user._id,
                 username: user.username,
-                // password: credentials.password, // Only sending because it's a guest account
+                // password: credentials.password,
                 // email: user.email
                 token
             }

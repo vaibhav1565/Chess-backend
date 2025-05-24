@@ -37,7 +37,7 @@ userSchema.methods.getJWT = function (guest = false) {
   const user = this;
   const token = jwt.sign({ _id: user._id }, process.env.SECRET_KEY,
     {
-      expiresIn: guest ? 10 * 60 : "30d" // 10 minutes for guest
+      expiresIn: guest ? 60 * 60 * 10 : "30d" // 10 hours for guest
     }
   );
 

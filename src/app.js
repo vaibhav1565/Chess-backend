@@ -12,7 +12,7 @@ const { handleConnection } = require("./websocket/websocketHandler.js");
 
 const authRouter = require("./routes/auth.js");
 const profileRouter = require("./routes/profile.js");
-// const guestAuthRouter = require('./routes/guest.js');
+const guestAuthRouter = require('./routes/guest.js');
 
 const app = express();
 app.use(cors(
@@ -26,7 +26,7 @@ app.use(cookieParser());
 
 app.use("/", authRouter);
 app.use("/", profileRouter);
-// app.use('/', guestAuthRouter);
+app.use('/', guestAuthRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });

@@ -9,16 +9,13 @@ let numberOfConnections = 0;
 function handleClose(ws, gameManager) {
     return () => {
         console.group('[HANDLE CLOSE]');
-        if (!ws.user?._id) {
-            console.log('Uninitialized connection closed');
-            console.groupEnd();
-            return;
-        }
         console.log(`User disconnecting: ${ws.user.username}`);
-        activeConnections.delete(ws.user._id);
         gameManager.removePlayer(ws);
+        activeConnections.delete(ws.user._id);
         numberOfConnections--;
         console.log(`Total connections after disconnect: ${numberOfConnections}`);
+        printUsers();
+        console.log("#################")
         console.groupEnd();
     };
 }
@@ -36,17 +33,22 @@ async function handleConnection(ws, req, gameManager) {
                 payload: WEBSOCKET_ERROR_MESSAGES.INVALID_TOKEN
             }));
             ws.close();
+            console.log("#################")
+
             console.groupEnd();
             return;
         }
 
         const user = await validateConnection(token);
 
-        if (activeConnections.has(user._id.toString())) {
-            console.log('User already connected:', user.username);
-            ws.close();
-            console.groupEnd();
-            return;
+        const existingUser = activeConnections.get(user._id.toString());
+        if (existingUser) {
+            console.log("User already connected, closing previous connection");
+            existingUser.close();
+            numberOfConnections--;
+            activeConnections.delete(user._id.toString());
+            gameManager.removePlayer(existingUser);
+            console.log(`Total connections after disconnect: ${numberOfConnections}`);
         }
 
         ws.user = {
@@ -64,6 +66,7 @@ async function handleConnection(ws, req, gameManager) {
         numberOfConnections += 1;
         activeConnections.set(ws.user._id, ws);
         console.log(`New connection established | Total: ${numberOfConnections} | User: ${ws.user.username}`);
+        printUsers();
 
         ws.on('message', handleMessage(ws, gameManager));
         ws.on('close', handleClose(ws, gameManager));
@@ -78,6 +81,7 @@ async function handleConnection(ws, req, gameManager) {
         }
         ws.close();
     }
+    console.log("#################")
     console.groupEnd();
 }
 
@@ -93,39 +97,33 @@ function handleMessage(ws, gameManager) {
 
             switch (message.type) {
                 case WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_QUEUE: {
-                    console.group('[JOIN GAME VIA QUEUE]');
-                    if (! timeConfig || timeConfig.minutes === undefined || timeConfig.increment === undefined) {
+                    console.log('[JOIN GAME VIA QUEUE]');
+                    if (!timeConfig || timeConfig.minutes === undefined || timeConfig.increment === undefined) {
                         console.log("Missing time config");
-                        console.groupEnd();
+                        // console.groupEnd();
                         throw new Error(WEBSOCKET_ERROR_MESSAGES.MISSING_TIMECONFIG);
                     }
-                    console.log('Time config:', timeConfig);
                     await gameManager.addPlayerViaQueue(ws, timeConfig);
-                    console.groupEnd();
                     break;
                 }
                 case WEBSOCKET_MESSAGE_TYPES.JOIN_GAME_VIA_INVITE: {
-                    console.group('[JOIN GAME VIA INVITE]');
+                    console.log('[JOIN GAME VIA INVITE]');
                     if (!inviteCode) {
                         console.log('Missing invite code');
-                        console.groupEnd();
+                        // console.groupEnd();
                         throw new Error(WEBSOCKET_ERROR_MESSAGES.MISSING_INVITE_CODE);
                     }
-                    console.log('Invite code:', inviteCode);
                     gameManager.addPlayerViaInvite(ws, inviteCode);
-                    console.groupEnd();
                     break;
                 }
                 case WEBSOCKET_MESSAGE_TYPES.CREATE_INVITE_CODE: {
-                    console.group('[CREATE INVITE CODE]');
+                    console.log('[CREATE INVITE CODE]');
                     if (!timeConfig || timeConfig.minutes === undefined || timeConfig.increment === undefined) {
                         console.log("Missing time config");
-                        console.groupEnd();
+                        // console.groupEnd();
                         throw new Error(WEBSOCKET_ERROR_MESSAGES.MISSING_TIMEPERIOD);
                     }
-                    console.log('Time config:', timeConfig);
                     gameManager.createInviteCode(ws, timeConfig);
-                    console.groupEnd();
                     break;
                 }
 
@@ -143,16 +141,24 @@ function handleMessage(ws, gameManager) {
                 }));
             }
         }
-        console.groupEnd();
+        finally {
+            console.log("#################")
+            console.groupEnd();
+        }
     };
+}
+
+function printUsers() {
+    const keys = activeConnections.keys();
+    while (true) {
+        const key = keys.next().value;
+        if (!key) break;
+        console.log(key);
+    }
 }
 
 async function validateConnection(token) {
     console.group('[VALIDATE CONNECTION]');
-    if (!token) {
-        console.log('No token provided');
-        throw new Error(WEBSOCKET_ERROR_MESSAGES.INVALID_TOKEN);
-    }
 
     const decodedObj = jwt.verify(token, process.env.SECRET_KEY);
     const { _id } = decodedObj;
@@ -165,7 +171,8 @@ async function validateConnection(token) {
         throw new Error(WEBSOCKET_ERROR_MESSAGES.USER_NOT_FOUND);
     }
 
-    console.log('User validated:', user.username);
+    console.log("#################")
+
     console.groupEnd();
     return user;
 }

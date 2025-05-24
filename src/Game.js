@@ -7,7 +7,7 @@ const {
     MESSAGE_TYPES,
     GAME_END_REASONS,
     GAME_SETTINGS,
-    INITIAL_PGN,
+    // INITIAL_PGN,
 } = require('./chessConstants');
 
 
@@ -24,13 +24,13 @@ class Game {
         ENDED: 'ended'
     }
 
-    constructor(player1, player2, gameManager, minutes, incrementPerTurn) {
+    constructor(player1, player2, gameManager, minutes, increment) {
         this.player1 = player1;
         this.player2 = player2;
         this.gameManager = gameManager;
 
         this.minutes = minutes;
-        this.incrementPerTurn = incrementPerTurn;
+        this.increment = increment;
 
         this.chess = createChessInstance();
 
@@ -51,7 +51,7 @@ class Game {
                 payload: {
                     color: index === 0 ? COLORS.WHITE : COLORS.BLACK,
                     minutes,
-                    incrementPerTurn,
+                    increment,
                     opponent: {
                         _id: opponent.user._id,
                         username: opponent.user.username
@@ -94,7 +94,8 @@ class Game {
             const elapsed = currentTime - lastTime;
             lastTime = currentTime;
 
-            this.timeLeft[currentId] -= (elapsed - this.incrementPerTurn);
+            // this.timeLeft[currentId] -= (elapsed - this.increment);
+            this.timeLeft[currentId] -= (elapsed);
 
             if (this.timeLeft[currentId] <= 0) {
                 clearInterval(this.timer);

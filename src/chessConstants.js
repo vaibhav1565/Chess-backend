@@ -9,6 +9,7 @@ const TIME_CONTROLS = [
     { minutes: 15, increment: 10 },
     { minutes: 30, increment: 0 },
 ];
+
 const COLORS = {
     WHITE: 'w',
     BLACK: 'b'
